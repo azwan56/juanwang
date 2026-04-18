@@ -1,0 +1,2 @@
+# SCF Callback — 仅需 cryptography 用于 AES 加解密
+cryptography>=42.0.0
