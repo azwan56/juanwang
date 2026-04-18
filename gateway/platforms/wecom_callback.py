@@ -264,6 +264,24 @@ class WecomCallbackAdapter(BasePlatformAdapter):
                             str(app.get("corp_id") or ""), event.source.user_id,
                         )
                         self._user_app_map[map_key] = app["name"]
+                        
+                    # --- YUEPAOQUAN INTERCEPT HOOK ---
+                    try:
+                        import sys
+                        import os
+                        # ensure root is in sys.path
+                        _proj_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        if _proj_root not in sys.path:
+                            sys.path.insert(0, _proj_root)
+                        from agent.yuepaoquan_service.main import handle_incoming_wecom
+                        handled = await handle_incoming_wecom(self, event, app)
+                        if handled:
+                            # Already processed by YuePaoQuan, no need to forward to regular Hermes pipeline
+                            return web.Response(text="success", content_type="text/plain")
+                    except Exception as he:
+                        logger.error(f"[YuePaoQuan] Intercept failed: {he}", exc_info=True)
+                    # ---------------------------------
+                        
                     await self._message_queue.put(event)
                 # Immediately acknowledge — the agent's reply will arrive
                 # later via the proactive message/send API.
@@ -307,13 +325,20 @@ class WecomCallbackAdapter(BasePlatformAdapter):
             event_name = (root.findtext("Event") or "").lower()
             if event_name in {"enter_agent", "subscribe"}:
                 return None
-        if msg_type not in {"text", "event"}:
+        if msg_type not in {"text", "event", "image"}:
             return None
 
         user_id = root.findtext("FromUserName", default="")
         corp_id = root.findtext("ToUserName", default=app.get("corp_id", ""))
         scoped_chat_id = self._user_app_key(corp_id, user_id)
-        content = root.findtext("Content", default="").strip()
+        
+        pic_url = ""
+        if msg_type == "image":
+            pic_url = root.findtext("PicUrl", default="")
+            content = f"[Image Received] {pic_url}"
+        else:
+            content = root.findtext("Content", default="").strip()
+            
         if not content and msg_type == "event":
             content = "/start"
         msg_id = (
@@ -327,12 +352,16 @@ class WecomCallbackAdapter(BasePlatformAdapter):
             user_id=user_id,
             user_name=user_id,
         )
+        # We pass pic_url in metadata if present
+        metadata = {"pic_url": pic_url} if (msg_type == "image" and pic_url) else None
+        
         return MessageEvent(
             text=content,
             message_type=MessageType.TEXT,
             source=source,
             raw_message=xml_text,
             message_id=msg_id,
+            metadata=metadata
         )
 
     def _crypt_for_app(self, app: Dict[str, Any]) -> WXBizMsgCrypt:
