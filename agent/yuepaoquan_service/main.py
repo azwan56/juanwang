@@ -170,7 +170,7 @@ async def handle_incoming_wecom(adapter, event, app) -> bool:
             f"📏 距离：{dist} km  ⚡ 配速：{pace} /km\n"
             f"📊 {progress_line}\n"
             f"━━━━━━━━━━━━━━\n"
-            f"💬 {data.get('summary', '再接再厉！')[:80]}"
+            f"💬 {data.get('summary', '再接再厉！')}"
         )
         await broadcast_to_group(group_msg)
 
