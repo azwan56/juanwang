@@ -11,9 +11,27 @@ YuePaoQuan 核心业务编排模块。
 from .storage import DatabaseConnector
 from .processor import analyze_running_image
 import logging
+import os
 import re
 import asyncio
 import datetime
+import httpx
+
+_WEBHOOK_URL = os.getenv("WECOM_WEBHOOK_URL", "")
+
+async def broadcast_to_group(message: str) -> None:
+    """通过群机器人 Webhook 广播消息到群。"""
+    if not _WEBHOOK_URL:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            await client.post(_WEBHOOK_URL, json={
+                "msgtype": "text",
+                "text": {"content": message}
+            })
+            logging.getLogger(__name__).info("[Broadcast] ✅ 已发送群播")
+    except Exception as e:
+        logging.getLogger(__name__).error("[Broadcast] 群播失败: %s", e)
 
 logger = logging.getLogger(__name__)
 _db = None
@@ -132,8 +150,30 @@ async def handle_incoming_wecom(adapter, event, app) -> bool:
         lines.append("🔥 卷王辣评：")
         lines.append(data.get("summary", "再接再厉，卷死他们！"))
         
-        # Send Back to User/Group
-        await adapter.send(event.source.chat_id, "\n".join(lines))
+        private_reply = "\n".join(lines)
+
+        # 私信回复本人（详细版）
+        await adapter.send(event.source.chat_id, private_reply)
+
+        # 群播战报（简洁版公告）
+        if stats.get("target_km"):
+            progress_line = (
+                f"本月进度：{stats['total_km']} km / {stats['target_km']} km "
+                f"({stats['progress_pct']}%)"
+            )
+        else:
+            progress_line = f"本月累计：{stats['total_km']} km"
+
+        group_msg = (
+            f"🏃 {user_id} 刚刚完成了一次跑步！\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"📏 距离：{dist} km  ⚡ 配速：{pace} /km\n"
+            f"📊 {progress_line}\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"💬 {data.get('summary', '再接再厉！')[:80]}"
+        )
+        await broadcast_to_group(group_msg)
+
         return True
 
     # Allow standard chat text routing in Hermes to proceed if not handled
