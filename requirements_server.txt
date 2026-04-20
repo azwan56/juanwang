@@ -1,0 +1,8 @@
+# YuePaoQuan 独立服务器最小依赖
+# 安装命令: pip install -r requirements_server.txt
+
+aiohttp>=3.9.0,<4
+httpx>=0.27.0,<1
+python-dotenv>=1.0.0,<2
+cryptography>=42.0.0,<44
+requests>=2.31.0,<3

@@ -1,6 +1,11 @@
 """
-Core Orchestration for YuePaoQuan Service via Hermes.
-Intercepts Webhook payload directly from WeCom callback adapter.
+YuePaoQuan 核心业务编排模块。
+支持独立 server.py 和 Hermes 两种运行模式。
+
+处理:
+  - 「本月目标 X」命令：设定月度跑量目标
+  - 「查询」/「我的数据」命令：查看本月进度
+  - 图片消息：OCR 提取跑步数据并反馈
 """
 
 from .storage import DatabaseConnector
@@ -21,26 +26,54 @@ def get_db():
 
 async def handle_incoming_wecom(adapter, event, app) -> bool:
     """
-    Hook called tightly from wecom_callback.py.
-    Returns True if handled (do not forward to Hermes standard agent), else False.
+    主入口：处理来自企业微信的消息事件。
+    adapter: 任何有 async send(chat_id, text) 方法的对象
+    event:   有 source.user_id / source.chat_id / text / metadata / message_id 的对象
+    返回 True 表示已处理，False 表示未处理（可继续往下路由）。
     """
     user_id = event.source.user_id
     text = event.text or ""
     metadata = getattr(event, "metadata", None) or {}
     
-    # 1. Goal Setting Command Handling
+    # 1. Goal Setting Command
     goal_match = re.search(r"本月目标\s*(\d+\.?\d*)", text)
     if goal_match:
         target_km = float(goal_match.group(1))
         month = datetime.datetime.now().strftime("%Y-%m")
         db = get_db()
         db.save_monthly_goal(user_id, month, target_km)
-        
-        reply = f"✅ 【卷王通报】立下军令状！\n{user_id} 设定了 {month} 月终极目标：{target_km} km。\n牛皮吹出去了，剩下的就是流汗了！"
+        reply = (
+            f"✅ 【卷王通报】立下军令状！\n"
+            f"{user_id} 设定了 {month} 月终极目标：{target_km} km。\n"
+            f"牛皮吹出去了，剩下的就是流汗了！"
+        )
         await adapter.send(event.source.chat_id, reply)
         return True
-        
-    # 2. Image Activity Processing
+
+    # 2. Query Command — 查看本月进度
+    if re.search(r"(查询|我的数据|我的进度|本月进度|跑了多少)", text):
+        month = datetime.datetime.now().strftime("%Y-%m")
+        db = get_db()
+        stats = db.get_monthly_stats(user_id, month)
+        if stats.get("target_km"):
+            reply = (
+                f"📊 【{user_id} 的 {month} 月战报】\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"已跑：{stats['total_km']} km / 目标 {stats['target_km']} km\n"
+                f"进度：{stats['progress_pct']}%\n"
+                f"还差：{stats['remaining_km']} km\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"{'🎉 已完成目标！继续卷！' if stats['progress_pct'] >= 100 else '💪 加油，别让自己后悔！'}"
+            )
+        else:
+            reply = (
+                f"📊 {month} 月你悄悄跑了 {stats['total_km']} km。\n"
+                f"还没设目标？发「本月目标 100」试试！"
+            )
+        await adapter.send(event.source.chat_id, reply)
+        return True
+
+    # 3. Image Activity Processing
     pic_url = metadata.get("pic_url")
     if pic_url:
         # Prompt immediately so user knows it hasn't died
