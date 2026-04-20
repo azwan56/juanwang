@@ -95,7 +95,7 @@ async def handle_incoming_wecom(adapter, event, app) -> bool:
     pic_url = metadata.get("pic_url")
     if pic_url:
         # Prompt immediately so user knows it hasn't died
-        await adapter.send(event.source.chat_id, f"👀 收到截图！敏文卷王正在拿起放大镜审视 {user_id} 的数据...")
+        await adapter.send(event.source.chat_id, f"👀 收到截图！闵文卷王正在拿起放大镜审视 {user_id} 的数据...")
         
         # Async run the blocking OCR
         loop = asyncio.get_running_loop()
