@@ -67,6 +67,7 @@ async def handle_incoming_wecom(adapter, event, app) -> bool:
             f"牛皮吹出去了，剩下的就是流汗了！"
         )
         await adapter.send(event.source.chat_id, reply)
+        await broadcast_to_group(reply)
         return True
 
     # 2. Query Command — 查看本月进度
@@ -91,6 +92,31 @@ async def handle_incoming_wecom(adapter, event, app) -> bool:
                 f"还没设目标？发「本月目标 100」试试！"
             )
         await adapter.send(event.source.chat_id, reply)
+        await broadcast_to_group(reply)
+        return True
+
+    # 3. Leaderboard Command — 查看排行榜
+    if re.search(r"(排行榜|排行|卷王榜|榜单|跑量榜)", text):
+        month = datetime.datetime.now().strftime("%Y-%m")
+        db = get_db()
+        leaderboard = db.get_leaderboard(month)
+        
+        if not leaderboard:
+            reply = f"本月还没有人跑步或者立下目标，赶紧当第一！"
+        else:
+            lines = [f"🏆 【{month} 月卷王排行榜】", "━━━━━━━━━━━━━━"]
+            for idx, user in enumerate(leaderboard, 1):
+                medal = ["🥇", "🥈", "🥉"][idx-1] if idx <= 3 else f"{idx}."
+                if user['target_km']:
+                    gap_text = f"差 {user['remaining_km']}km" if user['progress_pct'] < 100 else "👑 已达标"
+                    lines.append(f"{medal} {user['user_id']}：跑了 {user['total_km']} km ({gap_text})")
+                else:
+                    lines.append(f"{medal} {user['user_id']}：跑了 {user['total_km']} km (无目标)")
+            lines.append("━━━━━━━━━━━━━━")
+            reply = "\n".join(lines)
+            
+        await adapter.send(event.source.chat_id, reply)
+        await broadcast_to_group(reply)
         return True
 
     # 3. Image Activity Processing

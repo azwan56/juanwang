@@ -113,3 +113,39 @@ class DatabaseConnector:
                 "progress_pct": round((total_dist / target * 100) if target else 0, 1),
                 "remaining_km": round(max(0, target - total_dist), 2) if target else None
             }
+
+    def get_leaderboard(self, month: str):
+        """Fetch all user stats and merge them for a leaderboard."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get totals
+            cursor.execute('''
+                SELECT user_id, SUM(distance_km) FROM running_records 
+                WHERE month = ? GROUP BY user_id
+            ''', (month,))
+            totals = {row[0]: row[1] or 0.0 for row in cursor.fetchall()}
+            
+            # Get goals
+            cursor.execute('''
+                SELECT user_id, target_km FROM monthly_goals 
+                WHERE month = ?
+            ''', (month,))
+            goals = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            # Merge
+            users = set(totals.keys()) | set(goals.keys())
+            results = []
+            for uid in users:
+                total = totals.get(uid, 0.0)
+                target = goals.get(uid)
+                results.append({
+                    "user_id": uid,
+                    "total_km": round(total, 2),
+                    "target_km": target,
+                    "progress_pct": round((total / target * 100) if target else 0, 1),
+                    "remaining_km": round(max(0, target - total), 2) if target else None
+                })
+                
+            # Sort by total_km descending
+            return sorted(results, key=lambda x: x["total_km"], reverse=True)
