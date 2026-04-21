@@ -20,6 +20,8 @@ import re
 import asyncio
 import datetime
 import httpx
+import hashlib
+import base64
 
 async def broadcast_to_group(message: str) -> None:
     """通过群机器人 Webhook 广播消息到群。"""
@@ -36,6 +38,33 @@ async def broadcast_to_group(message: str) -> None:
             logging.getLogger(__name__).info("[Broadcast] ✅ 已发送群播")
     except Exception as e:
         logging.getLogger(__name__).error("[Broadcast] 群播失败: %s", e)
+
+async def broadcast_image_to_group(pic_url: str) -> None:
+    """通过群机器人 Webhook 广播截图到群。"""
+    webhook_url = os.getenv("WECOM_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            # 1. Download image
+            resp = await client.get(pic_url)
+            image_data = resp.content
+            
+            # 2. Calculate Base64 & MD5 (WeCom API req)
+            b64_str = base64.b64encode(image_data).decode("utf-8")
+            md5_str = hashlib.md5(image_data).hexdigest()
+            
+            # 3. Send via Webhook
+            await client.post(webhook_url, json={
+                "msgtype": "image",
+                "image": {
+                    "base64": b64_str,
+                    "md5": md5_str
+                }
+            })
+            logging.getLogger(__name__).info("[Broadcast] ✅ 已发送图片群播")
+    except Exception as e:
+        logging.getLogger(__name__).error("[Broadcast] 图片群播失败: %s", e)
 
 logger = logging.getLogger(__name__)
 _db = None
@@ -204,6 +233,7 @@ async def handle_incoming_wecom(adapter, event, app) -> bool:
             f"━━━━━━━━━━━━━━\n"
             f"💬 {data.get('summary', '再接再厉！')}"
         )
+        await broadcast_image_to_group(pic_url)
         await broadcast_to_group(group_msg)
 
         return True
