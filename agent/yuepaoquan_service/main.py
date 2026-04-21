@@ -8,6 +8,10 @@ YuePaoQuan 核心业务编排模块。
   - 图片消息：OCR 提取跑步数据并反馈
 """
 
+# Load .env before anything else
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 from .storage import DatabaseConnector
 from .processor import analyze_running_image
 import logging
@@ -17,15 +21,15 @@ import asyncio
 import datetime
 import httpx
 
-_WEBHOOK_URL = os.getenv("WECOM_WEBHOOK_URL", "")
-
 async def broadcast_to_group(message: str) -> None:
     """通过群机器人 Webhook 广播消息到群。"""
-    if not _WEBHOOK_URL:
+    webhook_url = os.getenv("WECOM_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        logging.getLogger(__name__).warning("[Broadcast] 未配置 WECOM_WEBHOOK_URL，跳过群播。")
         return
     try:
         async with httpx.AsyncClient(timeout=8) as client:
-            await client.post(_WEBHOOK_URL, json={
+            await client.post(webhook_url, json={
                 "msgtype": "text",
                 "text": {"content": message}
             })
