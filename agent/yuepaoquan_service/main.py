@@ -54,7 +54,8 @@ async def handle_incoming_wecom(adapter, event, app) -> bool:
     metadata = getattr(event, "metadata", None) or {}
     
     # 1. Goal Setting Command
-    goal_match = re.search(r"本月目标\s*(\d+\.?\d*)", text)
+    # Flexible: matches "本月目标 300", "目标是300公里", "跑量目标300", "我这个月的跑量目标是300公里哦" etc.
+    goal_match = re.search(r"目标[是为]?\s*(\d+\.?\d*)\s*(?:公里|km|K)?", text, re.IGNORECASE)
     if goal_match:
         target_km = float(goal_match.group(1))
         month = datetime.datetime.now().strftime("%Y-%m")
@@ -69,7 +70,8 @@ async def handle_incoming_wecom(adapter, event, app) -> bool:
         return True
 
     # 2. Query Command — 查看本月进度
-    if re.search(r"(查询|我的数据|我的进度|本月进度|跑了多少)", text):
+    # Flexible: matches "查询", "进展如何", "到目前我的进展如何", "目前进度", "完成了多少" etc.
+    if re.search(r"(查询|我的数据|我的进度|本月进度|跑了多少|进展|进度|完成了多少|跑了多远|目前.*多少|战报)", text):
         month = datetime.datetime.now().strftime("%Y-%m")
         db = get_db()
         stats = db.get_monthly_stats(user_id, month)
